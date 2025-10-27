@@ -1,0 +1,44 @@
+# Production-specific overrides
+spring:
+  config:
+    activate:
+      on-profile: prod
+  
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudsync}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}  # Empty default forces env variable
+  
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate  # Never auto-update schema in prod!
+    show-sql: false       # Don't log SQL in production
+
+# Production storage (use S3)
+storage:
+  type: s3
+
+# Production logging
+logging:
+  level:
+    com.cloudsync: INFO
+    org.springframework: WARN
+  file:
+    name: /var/log/cloudsync/app.log
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Production monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+  endpoint:
+    health:
+      show-details: never  # Security in production

@@ -1,0 +1,30 @@
+# Development-specific overrides
+spring:
+  config:
+    activate:
+      on-profile: dev
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cloudsync
+    username: postgres
+    password: postgres
+  
+  redis:
+    host: localhost
+    port: 6379
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # Reset DB on every restart
+    show-sql: true           # Show SQL in logs
+
+# Development storage
+storage:
+  type: local
+
+# Development logging
+logging:
+  level:
+    com.cloudsync: DEBUG
+    org.hibernate.SQL: true
+    org.hibernate.type: TRACE

@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: cloudsync
+  
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+  
+   # DATASOURCE CONFIG MUST BE IN BASE APPLICATION.YML
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/cloudsync}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  
+  # REDIS CONFIG
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+
+  # JPA CONFIG
+  jpa:
+    hibernate:
+      ddl-auto: update  # Default, overridden in profiles
+    show-sql: false     # Default, overridden in profiles
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+server:
+  port: 8082
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:}  # EMPTY - forces env variable
+  expiration: 86400000    # 24 hours
+
+# Storage Configuration
+storage:
+  type: ${STORAGE_TYPE:local}
+  local:
+    upload-dir: ${UPLOAD_DIR:./uploads}
+  s3:
+    bucket-name: ${S3_BUCKET_NAME:}
+    region: ${AWS_REGION:eu-west-3}
+
+# User defaults
+user:
+  default-storage-limit: 5368709120  # 5GB in bytes
+
+# AWS Configuration
+cloud:
+  aws:
+    credentials:
+      access-key: ${AWS_ACCESS_KEY_ID:}
+      secret-key: ${AWS_SECRET_ACCESS_KEY:}
+    region:
+      static: ${AWS_REGION:eu-west-3}
+    stack:
+      auto: false
