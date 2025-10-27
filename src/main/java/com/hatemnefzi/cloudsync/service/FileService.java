@@ -62,18 +62,17 @@ public class FileService {
 
         // Check if file with same checksum exists (deduplication)
         String storageKey;
-        boolean isDuplicate = false;
         
-        var existingFile = fileRepository.findByChecksum(checksum);
-        if (existingFile.isPresent()) {
-            // Reuse storage key (file already stored)
+        
+        var existingFile = fileRepository.findFirstByChecksumAndDeletedAtIsNull(checksum);
+        boolean isDuplicate = existingFile.isPresent();
+
+        if (isDuplicate) {
             storageKey = existingFile.get().getStorageKey();
-            isDuplicate = true;
-            log.info("File deduplication: reusing storage key {}", storageKey);
         } else {
-            // Store file
-            storageKey = storageService.store(multipartFile, userId, multipartFile.getOriginalFilename());
-        }
+        // Store new file
+        storageKey = storageService.store(multipartFile, userId, multipartFile.getOriginalFilename());
+    }
 
         // Create file metadata
         File file = File.builder()

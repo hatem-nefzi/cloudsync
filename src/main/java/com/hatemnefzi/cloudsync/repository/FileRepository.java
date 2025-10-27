@@ -11,6 +11,7 @@ public interface FileRepository extends JpaRepository<File, Long> {
     List<File> findByOwnerAndFolderAndDeletedAtIsNull(User owner, Folder folder);
     List<File> findByOwnerAndDeletedAtIsNull(User owner);
     Optional<File> findByIdAndDeletedAtIsNull(Long id);
-    Optional<File> findByChecksum(String checksum);
+    List<File> findByChecksum(String checksum);
     List<File> findByNameContainingIgnoreCaseAndOwnerAndDeletedAtIsNull(String name, User owner);
+    Optional<File> findFirstByChecksumAndDeletedAtIsNull(String checksum);
 }

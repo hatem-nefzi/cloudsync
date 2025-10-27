@@ -44,7 +44,7 @@ storage:
   local:
     upload-dir: ${UPLOAD_DIR:./uploads}
   s3:
-    bucket-name: ${S3_BUCKET_NAME:}
+    bucket-name: ${S3_BUCKET_NAME:cloudsync-files-hatemnefzi}
     region: ${AWS_REGION:eu-west-3}
 
 # User defaults

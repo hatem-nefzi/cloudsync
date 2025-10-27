@@ -1,9 +1,13 @@
 package com.hatemnefzi.cloudsync.controller;
 
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.hatemnefzi.cloudsync.dto.FileInfoResponse;
 import com.hatemnefzi.cloudsync.dto.FileUploadResponse;
 import com.hatemnefzi.cloudsync.service.FileService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;  // ← CORRECT IMPORT!
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -22,6 +26,10 @@ import java.util.List;
 public class FileController {
 
     private final FileService fileService;
+    private final AmazonS3 s3Client;
+
+    @Value("${storage.s3.bucket-name}")  // ← NOW THIS WILL WORK!
+    private String bucketName;
 
     @PostMapping("/upload")
     public ResponseEntity<FileUploadResponse> uploadFile(
@@ -67,14 +75,43 @@ public class FileController {
         return ResponseEntity.noContent().build();
     }
 
-    // adding a folder endpoint
+    @GetMapping("/folder/{folderId}")
+    public ResponseEntity<List<FileInfoResponse>> getFilesInFolder(
+            @PathVariable Long folderId,
+            Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        List<FileInfoResponse> files = fileService.getFilesInFolder(folderId, userId);
+        return ResponseEntity.ok(files);
+    }
 
-        @GetMapping("/folder/{folderId}")
-        public ResponseEntity<List<FileInfoResponse>> getFilesInFolder(
-                @PathVariable Long folderId,
-                Authentication authentication) {
-            Long userId = (Long) authentication.getPrincipal();
-            List<FileInfoResponse> files = fileService.getFilesInFolder(folderId, userId);
-            return ResponseEntity.ok(files);
+    @GetMapping("/s3-debug")
+    public String s3Debug() {
+        try {
+            // List objects in bucket
+            ObjectListing objectListing = s3Client.listObjects(bucketName);
+            List<S3ObjectSummary> objects = objectListing.getObjectSummaries();
+
+            StringBuilder result = new StringBuilder();
+            result.append("=== S3 BUCKET DEBUG ===\n");
+            result.append("Bucket: ").append(bucketName).append("\n");
+            result.append("Total Objects: ").append(objects.size()).append("\n\n");
+            
+            if (objects.isEmpty()) {
+                result.append("No objects found in bucket.\n");
+                result.append("Make sure your S3 configuration is correct.\n");
+            } else {
+                result.append("Objects:\n");
+                for (S3ObjectSummary object : objects) {
+                    result.append("📄 ").append(object.getKey())
+                          .append(" (").append(object.getSize()).append(" bytes)\n")
+                          .append("    Last Modified: ").append(object.getLastModified()).append("\n");
+                }
+            }
+
+            return result.toString();
+        } catch (Exception e) {
+            return "❌ S3 Debug Error: " + e.getMessage() + "\n" +
+                   "Check your AWS credentials and bucket permissions.";
         }
+    }
 }

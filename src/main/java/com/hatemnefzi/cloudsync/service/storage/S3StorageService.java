@@ -12,19 +12,24 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
 
-@Service
-@RequiredArgsConstructor
+
 @Slf4j
 public class S3StorageService implements StorageService {
 
     private final AmazonS3 s3Client;
+    private final String bucketName;
 
-    @Value("${storage.s3.bucket-name}")
-    private String bucketName;
+    public S3StorageService(AmazonS3 s3Client, String bucketName) {
+        this.s3Client = s3Client;
+        this.bucketName = bucketName;
+        log.info("🟢 S3StorageService initialized - Bucket: {}", bucketName);
+    }
 
     @Override
     public String store(MultipartFile file, Long userId, String filename) throws IOException {
         String key = generateKey(userId, filename);
+        log.info("🚀 S3 UPLOAD START - Bucket: {}, Key: {}, Size: {}, User: {}", 
+                 bucketName, key, file.getSize(), userId);
         
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(file.getSize());
