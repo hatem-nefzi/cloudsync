@@ -23,6 +23,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.stream.Collectors;
+//adding imports for file service that rsupport folders
+import com.hatemnefzi.cloudsync.entity.Folder;
+import com.hatemnefzi.cloudsync.repository.FolderRepository;
+
 
 @Service
 @RequiredArgsConstructor
@@ -33,13 +37,21 @@ public class FileService {
     private final UserRepository userRepository;
     private final ActivityRepository activityRepository;
     private final StorageService storageService;
+    //adding imports for file service that support folders
+    private final FolderRepository folderRepository;
 
     @Transactional
     public FileUploadResponse uploadFile(MultipartFile multipartFile, Long userId, Long folderId) throws IOException {
         // Get user
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
+        
+        // Get folder if specified
+        Folder folder = null;
+        if (folderId != null) {
+            folder = folderRepository.findByIdAndOwner(folderId, user)
+                .orElseThrow(() -> new RuntimeException("Folder not found"));
+        }
         // Check storage quota
         if (user.getStorageUsed() + multipartFile.getSize() > user.getStorageLimit()) {
             throw new RuntimeException("Storage quota exceeded");
@@ -67,6 +79,7 @@ public class FileService {
         File file = File.builder()
                 .name(multipartFile.getOriginalFilename())
                 .owner(user)
+                .folder(folder)
                 .size(multipartFile.getSize())
                 .mimeType(multipartFile.getContentType())
                 .storageKey(storageKey)
@@ -190,5 +203,21 @@ public class FileService {
                 .folderId(file.getFolder() != null ? file.getFolder().getId() : null)
                 .checksum(file.getChecksum())
                 .build();
+    }
+
+    // Add method to get files in folder
+    @Transactional(readOnly = true)
+    public List<FileInfoResponse> getFilesInFolder(Long folderId, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Folder folder = folderRepository.findByIdAndOwner(folderId, user)
+                .orElseThrow(() -> new RuntimeException("Folder not found"));
+
+        List<File> files = fileRepository.findByOwnerAndFolderAndDeletedAtIsNull(user, folder);
+
+        return files.stream()
+                .map(this::mapToFileInfoResponse)
+                .collect(Collectors.toList());
     }
 }

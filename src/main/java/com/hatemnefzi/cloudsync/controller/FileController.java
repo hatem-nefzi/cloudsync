@@ -66,4 +66,15 @@ public class FileController {
         fileService.deleteFile(fileId, userId);
         return ResponseEntity.noContent().build();
     }
+
+    // adding a folder endpoint
+
+        @GetMapping("/folder/{folderId}")
+        public ResponseEntity<List<FileInfoResponse>> getFilesInFolder(
+                @PathVariable Long folderId,
+                Authentication authentication) {
+            Long userId = (Long) authentication.getPrincipal();
+            List<FileInfoResponse> files = fileService.getFilesInFolder(folderId, userId);
+            return ResponseEntity.ok(files);
+        }
 }
