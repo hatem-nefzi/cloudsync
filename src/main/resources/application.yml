@@ -40,7 +40,7 @@ jwt:
 
 # Storage Configuration
 storage:
-  type: ${STORAGE_TYPE:local}
+  type: ${STORAGE_TYPE:s3} # or local if we choose local storage
   local:
     upload-dir: ${UPLOAD_DIR:./uploads}
   s3:
