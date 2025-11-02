@@ -5,6 +5,7 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.hatemnefzi.cloudsync.dto.FileInfoResponse;
 import com.hatemnefzi.cloudsync.dto.FileUploadResponse;
+import com.hatemnefzi.cloudsync.dto.FileVersionResponse;
 import com.hatemnefzi.cloudsync.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;  // ← CORRECT IMPORT!
@@ -114,4 +115,55 @@ public class FileController {
                    "Check your AWS credentials and bucket permissions.";
         }
     }
+    @PutMapping("/{fileId}")
+public ResponseEntity<FileUploadResponse> updateFile(
+        @PathVariable Long fileId,
+        @RequestParam("file") MultipartFile file,
+        Authentication authentication) throws IOException {
+    
+    Long userId = (Long) authentication.getPrincipal();
+    FileUploadResponse response = fileService.updateFile(fileId, file, userId);
+    return ResponseEntity.ok(response);
+}
+
+// GET /api/files/{fileId}/versions - List all versions
+@GetMapping("/{fileId}/versions")
+public ResponseEntity<List<FileVersionResponse>> getFileVersions(
+        @PathVariable Long fileId,
+        Authentication authentication) {
+    
+    Long userId = (Long) authentication.getPrincipal();
+    List<FileVersionResponse> versions = fileService.getFileVersions(fileId, userId);
+    return ResponseEntity.ok(versions);
+}
+
+// GET /api/files/{fileId}/versions/{versionNumber}/download - Download specific version
+@GetMapping("/{fileId}/versions/{versionNumber}/download")
+public ResponseEntity<Resource> downloadFileVersion(
+        @PathVariable Long fileId,
+        @PathVariable Integer versionNumber,
+        Authentication authentication) throws IOException {
+    
+    Long userId = (Long) authentication.getPrincipal();
+    byte[] fileData = fileService.downloadFileVersion(fileId, versionNumber, userId);
+    
+    ByteArrayResource resource = new ByteArrayResource(fileData);
+    
+    return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"file-v" + versionNumber + "\"")
+            .body(resource);
+}
+
+// POST /api/files/{fileId}/versions/{versionNumber}/restore - Restore old version
+@PostMapping("/{fileId}/versions/{versionNumber}/restore")
+public ResponseEntity<FileUploadResponse> restoreFileVersion(
+        @PathVariable Long fileId,
+        @PathVariable Integer versionNumber,
+        Authentication authentication) throws IOException {
+    
+    Long userId = (Long) authentication.getPrincipal();
+    FileUploadResponse response = fileService.restoreFileVersion(fileId, versionNumber, userId);
+    return ResponseEntity.ok(response);
+} 
 }

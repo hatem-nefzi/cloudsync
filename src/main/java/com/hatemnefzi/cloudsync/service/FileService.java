@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
 //adding imports for file service that rsupport folders
 import com.hatemnefzi.cloudsync.entity.Folder;
 import com.hatemnefzi.cloudsync.repository.FolderRepository;
+//adding imports for file service that support file versionning
+import com.hatemnefzi.cloudsync.entity.FileVersion;
+import com.hatemnefzi.cloudsync.repository.FileVersionRepository;
+import com.hatemnefzi.cloudsync.dto.FileVersionResponse;
 
 
 @Service
@@ -39,9 +43,12 @@ public class FileService {
     private final StorageService storageService;
     //adding imports for file service that support folders
     private final FolderRepository folderRepository;
+    //adding imports for file service that support file versionning
+    private final FileVersionRepository fileVersionRepository;
 
     @Transactional
     public FileUploadResponse uploadFile(MultipartFile multipartFile, Long userId, Long folderId) throws IOException {
+
         // Get user
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -219,4 +226,221 @@ public class FileService {
                 .map(this::mapToFileInfoResponse)
                 .collect(Collectors.toList());
     }
+    // ========== FILE VERSIONING METHODS ==========
+
+@Transactional
+public FileUploadResponse updateFile(Long fileId, MultipartFile multipartFile, Long userId) throws IOException {
+    // Get existing file
+    File existingFile = fileRepository.findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new RuntimeException("File not found"));
+
+    // Check ownership
+    if (!existingFile.getOwner().getId().equals(userId)) {
+        throw new RuntimeException("Unauthorized access to file");
+    }
+
+    User user = existingFile.getOwner();
+
+    // Check storage quota for new version
+    if (user.getStorageUsed() + multipartFile.getSize() > user.getStorageLimit()) {
+        throw new RuntimeException("Storage quota exceeded");
+    }
+
+    // Save current version to history BEFORE updating
+    FileVersion oldVersion = FileVersion.builder()
+            .file(existingFile)
+            .versionNumber(existingFile.getVersion())
+            .storageKey(existingFile.getStorageKey())
+            .size(existingFile.getSize())
+            .build();
+    fileVersionRepository.save(oldVersion);
+
+    log.info("Saved version to history: fileId={}, version={}", fileId, existingFile.getVersion());
+
+    // Calculate new checksum
+    String checksum = calculateChecksum(multipartFile.getInputStream());
+
+    // Store new file version
+    String newStorageKey = storageService.store(multipartFile, userId, multipartFile.getOriginalFilename());
+
+    // Update file metadata with new version
+    long oldSize = existingFile.getSize();
+    existingFile.setStorageKey(newStorageKey);
+    existingFile.setSize(multipartFile.getSize());
+    existingFile.setMimeType(multipartFile.getContentType());
+    existingFile.setChecksum(checksum);
+    existingFile.setVersion(existingFile.getVersion() + 1);
+    existingFile.setUpdatedAt(java.time.LocalDateTime.now());
+
+    existingFile = fileRepository.save(existingFile);
+
+    // Update user storage (remove old size, add new size)
+    user.setStorageUsed(user.getStorageUsed() - oldSize + multipartFile.getSize());
+    userRepository.save(user);
+
+    // Cleanup old versions (keep only last 5)
+    cleanupOldVersions(existingFile);
+
+    // Log activity
+    logActivity(user, ActivityType.UPLOAD, "FILE", fileId);
+
+    log.info("File updated: id={}, newVersion={}, oldSize={}, newSize={}", 
+             fileId, existingFile.getVersion(), oldSize, multipartFile.getSize());
+
+    return FileUploadResponse.builder()
+            .id(existingFile.getId())
+            .name(existingFile.getName())
+            .size(existingFile.getSize())
+            .mimeType(existingFile.getMimeType())
+            .version(existingFile.getVersion())
+            .createdAt(existingFile.getCreatedAt())
+            .folderId(existingFile.getFolder() != null ? existingFile.getFolder().getId() : null)
+            .build();
+}
+
+@Transactional(readOnly = true)
+public List<FileVersionResponse> getFileVersions(Long fileId, Long userId) {
+    File file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new RuntimeException("File not found"));
+
+    // Check ownership
+    if (!file.getOwner().getId().equals(userId)) {
+        throw new RuntimeException("Unauthorized access to file");
+    }
+
+    // Get all historical versions
+    List<FileVersion> versions = fileVersionRepository.findByFileOrderByVersionNumberDesc(file);
+
+    return versions.stream()
+            .map(v -> FileVersionResponse.builder()
+                    .id(v.getId())
+                    .versionNumber(v.getVersionNumber())
+                    .size(v.getSize())
+                    .createdAt(v.getCreatedAt())
+                    .build())
+            .collect(Collectors.toList());
+}
+
+@Transactional()
+public byte[] downloadFileVersion(Long fileId, Integer versionNumber, Long userId) throws IOException {
+    File file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new RuntimeException("File not found"));
+
+    // Check ownership
+    if (!file.getOwner().getId().equals(userId)) {
+        throw new RuntimeException("Unauthorized access to file");
+    }
+
+    // If requesting current version, use current storageKey
+    if (versionNumber.equals(file.getVersion())) {
+        log.info("Downloading current version: fileId={}, version={}", fileId, versionNumber);
+        return storageService.getFile(file.getStorageKey());
+    }
+
+    // Find historical version
+    List<FileVersion> versions = fileVersionRepository.findByFileOrderByVersionNumberDesc(file);
+    FileVersion targetVersion = versions.stream()
+            .filter(v -> v.getVersionNumber().equals(versionNumber))
+            .findFirst()
+            .orElseThrow(() -> new RuntimeException("Version " + versionNumber + " not found"));
+
+    // Log activity
+    logActivity(file.getOwner(), ActivityType.DOWNLOAD, "FILE", fileId);
+
+    log.info("Downloading historical version: fileId={}, version={}", fileId, versionNumber);
+    return storageService.getFile(targetVersion.getStorageKey());
+}
+
+@Transactional
+public FileUploadResponse restoreFileVersion(Long fileId, Integer versionNumber, Long userId) throws IOException {
+    File file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new RuntimeException("File not found"));
+
+    // Check ownership
+    if (!file.getOwner().getId().equals(userId)) {
+        throw new RuntimeException("Unauthorized access to file");
+    }
+
+    // Can't restore current version
+    if (versionNumber.equals(file.getVersion())) {
+        throw new RuntimeException("Cannot restore current version");
+    }
+
+    // Find target version to restore
+    List<FileVersion> versions = fileVersionRepository.findByFileOrderByVersionNumberDesc(file);
+    FileVersion targetVersion = versions.stream()
+            .filter(v -> v.getVersionNumber().equals(versionNumber))
+            .findFirst()
+            .orElseThrow(() -> new RuntimeException("Version " + versionNumber + " not found"));
+
+    // Save current version to history BEFORE restoring
+    FileVersion currentAsVersion = FileVersion.builder()
+            .file(file)
+            .versionNumber(file.getVersion())
+            .storageKey(file.getStorageKey())
+            .size(file.getSize())
+            .build();
+    fileVersionRepository.save(currentAsVersion);
+
+    log.info("Saved current version before restore: fileId={}, version={}", fileId, file.getVersion());
+
+    // Restore old version as current
+    User user = file.getOwner();
+    long oldSize = file.getSize();
+
+    file.setStorageKey(targetVersion.getStorageKey());
+    file.setSize(targetVersion.getSize());
+    file.setVersion(file.getVersion() + 1); // Increment version (restore = new version)
+    file.setUpdatedAt(java.time.LocalDateTime.now());
+
+    file = fileRepository.save(file);
+
+    // Update user storage
+    user.setStorageUsed(user.getStorageUsed() - oldSize + file.getSize());
+    userRepository.save(user);
+
+    // Log activity
+    logActivity(user, ActivityType.RESTORE_VERSION, "FILE", fileId);
+
+    log.info("Version restored: fileId={}, restoredVersion={}, newVersion={}", 
+             fileId, versionNumber, file.getVersion());
+
+    return FileUploadResponse.builder()
+            .id(file.getId())
+            .name(file.getName())
+            .size(file.getSize())
+            .mimeType(file.getMimeType())
+            .version(file.getVersion())
+            .createdAt(file.getCreatedAt())
+            .folderId(file.getFolder() != null ? file.getFolder().getId() : null)
+            .build();
+}
+
+/**
+ * Delete old versions, keeping only the last 5
+ */
+private void cleanupOldVersions(File file) {
+    List<FileVersion> versions = fileVersionRepository.findByFileOrderByVersionNumberDesc(file);
+    
+    // Keep only last 5 versions
+    if (versions.size() > 5) {
+        List<FileVersion> toDelete = versions.subList(5, versions.size());
+        
+        for (FileVersion version : toDelete) {
+            try {
+                // Delete from storage (S3 or local)
+                storageService.delete(version.getStorageKey());
+                // Delete from database
+                fileVersionRepository.delete(version);
+                log.info("Cleaned up old version: fileId={}, version={}", file.getId(), version.getVersionNumber());
+            } catch (IOException e) {
+                log.error("Failed to delete old version: fileId={}, version={}, error={}", 
+                         file.getId(), version.getVersionNumber(), e.getMessage());
+                // Don't throw exception, just log and continue
+            }
+        }
+    }
+}
+
+
 }
