@@ -441,6 +441,49 @@ private void cleanupOldVersions(File file) {
         }
     }
 }
+@Transactional(readOnly = true)
+public List<FileInfoResponse> searchFiles(String query, Long userId) {
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+    // Search by filename (case-insensitive)
+    List<File> files = fileRepository.findByNameContainingIgnoreCaseAndOwnerAndDeletedAtIsNull(query, user);
+
+    log.info("Search query='{}' returned {} results for user={}", query, files.size(), userId);
+
+    return files.stream()
+            .map(this::mapToFileInfoResponse)
+            .collect(Collectors.toList());
+}
+
+@Transactional(readOnly = true)
+public List<FileInfoResponse> searchFilesByType(String mimeType, Long userId) {
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+    // Search by MIME type
+    List<File> files = fileRepository.findByMimeTypeContainingAndOwnerAndDeletedAtIsNull(mimeType, user);
+
+    log.info("Search by type='{}' returned {} results for user={}", mimeType, files.size(), userId);
+
+    return files.stream()
+            .map(this::mapToFileInfoResponse)
+            .collect(Collectors.toList());
+}
+
+@Transactional(readOnly = true)
+public List<FileInfoResponse> getRecentFiles(Long userId, int limit) {
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+    // Get most recently uploaded files
+    List<File> files = fileRepository.findByOwnerAndDeletedAtIsNullOrderByCreatedAtDesc(user);
+
+    return files.stream()
+            .limit(limit)
+            .map(this::mapToFileInfoResponse)
+            .collect(Collectors.toList());
+}
 
 
 }

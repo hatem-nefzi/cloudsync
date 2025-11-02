@@ -166,4 +166,34 @@ public ResponseEntity<FileUploadResponse> restoreFileVersion(
     FileUploadResponse response = fileService.restoreFileVersion(fileId, versionNumber, userId);
     return ResponseEntity.ok(response);
 } 
+
+// Search files by name
+@GetMapping("/search")
+public ResponseEntity<List<FileInfoResponse>> searchFiles(
+        @RequestParam String q,
+        Authentication authentication) {
+    Long userId = (Long) authentication.getPrincipal();
+    List<FileInfoResponse> files = fileService.searchFiles(q, userId);
+    return ResponseEntity.ok(files);
+}
+
+// Search files by type
+@GetMapping("/search/type")
+public ResponseEntity<List<FileInfoResponse>> searchFilesByType(
+        @RequestParam String mimeType,
+        Authentication authentication) {
+    Long userId = (Long) authentication.getPrincipal();
+    List<FileInfoResponse> files = fileService.searchFilesByType(mimeType, userId);
+    return ResponseEntity.ok(files);
+}
+
+// Get recent files
+@GetMapping("/recent")
+public ResponseEntity<List<FileInfoResponse>> getRecentFiles(
+        @RequestParam(defaultValue = "10") int limit,
+        Authentication authentication) {
+    Long userId = (Long) authentication.getPrincipal();
+    List<FileInfoResponse> files = fileService.getRecentFiles(userId, limit);
+    return ResponseEntity.ok(files);
+}
 }
